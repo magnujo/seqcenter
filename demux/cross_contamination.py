@@ -3,11 +3,12 @@
 header = """
 Filename: cross_contamination.py
 Author: Filipe G. Vieira
-Date: 2025-10-10
-Version: 1.0.2"""
+Date: 2026-01-20
+Version: 1.0.3"""
 
 import argparse
 import logging
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from collections import defaultdict
@@ -31,8 +32,6 @@ parser.add_argument(
     "--index-known",
     action="store",
     type=Path,
-    default=Path(__file__).parent
-    / "eDNA_index_list_UDP097-UDP288_UDI001-UDI096_250807.txt",
     help="Path to file with index names.",
 )
 parser.add_argument(
@@ -60,15 +59,7 @@ parser.add_argument(
     action="store",
     type=float,
     default=0.5,
-    help="Minimum contamination to consider.",
-)
-parser.add_argument(
-    "-e",
-    "--min-events",
-    action="store",
-    type=int,
-    default=10,
-    help="Minimum number of events to show.",
+    help="Minimum number of contaminated reads to consider.",
 )
 parser.add_argument(
     "--rpm-warn",
@@ -208,7 +199,7 @@ assert (
 ### Pivot table ###
 idx_pivot = idx_cnt.pivot(index="p7id", columns="p5id", values="seqs")
 
-### Change RG of unknown/enexpected
+### Change RG of unknown/unexpected
 idx_cnt["status"] = idx_cnt["RG"]
 un = idx_cnt["RG"].isin(["unknown", "unexpected"])
 idx_cnt.loc[~un, "status"] = "known"
@@ -220,13 +211,11 @@ idx_cnt = idx_cnt.set_index(["p7id", "p5id"]).sort_values(["RG"])
 ### Compute Contamination ###
 #############################
 logging.info("Estimate contamination")
-cross_contam_events = {}  # event_name → cont (float)
-rg_events = {}  # event_name → rg_count
-sum_cont = defaultdict(int)  # rg → sum(cont >= 0.5)
+cross_contam = {"orig": [], "dest": [], "reads_contam": [], "reads_total": []}
 
 for row in idx_cnt.query('status == "known"').itertuples():
-    idx = row.Index[0]
     assert row.Index[0] == row.Index[1], "ERROR!"
+    idx = row.Index[0]
     if row.seqs == 0:
         continue
 
@@ -235,67 +224,66 @@ for row in idx_cnt.query('status == "known"').itertuples():
         if other_p5 == idx:
             continue
         # for each other p7 that pairs with that p5
-        for other_p7, _ in idx_pivot.loc[:, other_p5].items():
-            if (
-                other_p7 == idx
-                or pd.isna(idx_pivot.loc[other_p7, other_p5])
-                or idx_pivot.loc[other_p7, other_p5] == 0
-            ):
+        for other_p7, corner2 in idx_pivot.loc[:, idx].items():
+            if other_p7 == idx:
                 continue
-            corner2 = idx_pivot.loc[other_p7][idx]
 
             # calculate contamination estimate
             min_corner = min(corner1, corner2)
-            cont = (min_corner / row.seqs) ** 2 * row.seqs
-            # name by known readgroup or by indices
-            event = "{} into {}".format(idx_cnt.loc[other_p7, other_p5]["RG"], row.RG)
+            #
+            if min_corner == 0 or pd.isna(min_corner):
+                continue
+            contam = (min_corner / row.seqs) ** 2 * row.seqs
 
-            cross_contam_events[event] = cont
-            rg_events[event] = row.seqs
-            if cont >= args.min_contam:
-                sum_cont[row.RG] += cont
+            if contam >= args.min_contam:
+                cross_contam["orig"].append(idx_cnt.loc[other_p7, other_p5]["RG"])
+                cross_contam["dest"].append(row.RG)
+                cross_contam["reads_contam"].append(contam)
+                cross_contam["reads_total"].append(row.seqs)
 
 # Sort events by descending contamination
-cross_contam_events = dict(
-    sorted(cross_contam_events.items(), key=lambda v: v[1], reverse=True)
+cross_contam = pd.DataFrame(cross_contam).sort_values(
+    by=["reads_contam"], ascending=False
+)
+cross_contam["reads_pct"] = (
+    cross_contam.reads_contam.div(cross_contam.reads_total) * 100
 )
 
-
-####################
-### Top N contam ###
-####################
-# Stop early if cont<0.5 AND we've seen ≥N)
-count = 0
-for event, cont in cross_contam_events.items():
-    count += 1
-    rg_count = rg_events[event]
-    pct = cont / rg_count * 100
+# DEBUG
+for event in cross_contam.itertuples():
     logging.debug(
-        f"{event}\t{cont:.2f} reads (of a total of {rg_count}), or {pct:.5f}%"
+        f"{event.orig} into {event.dest}\t{event.reads_contam:.2f} reads out of {event.reads_total} ({event.reads_pct:.5f}%)"
     )
-    if count >= args.min_events and cont < args.min_contam:
-        break
 
 
 ##################
 ### RG Summary ###
 ##################
-idx_cnt["cross_cont_readsum"] = idx_cnt.apply(lambda x: sum_cont[x.RG], axis=1)
+cross_contam = (
+    cross_contam.drop(["orig", "reads_pct", "reads_total"], axis=1)
+    .groupby("dest")
+    .sum()
+    .rename(columns={"reads_contam": "cross_cont_readsum"})
+)
+
+# Add contam info to main DF
+idx_cnt = idx_cnt.join(cross_contam, on="RG", validate="1:1").fillna(0)
+# Get minimum of seqs and cross_cont_readsum
+idx_cnt["cross_cont_readsum"] = idx_cnt[["seqs", "cross_cont_readsum"]].min(axis=1)
+# Calculate contam reads per Million
 idx_cnt["cross_cont_perM"] = idx_cnt["cross_cont_readsum"] / idx_cnt["seqs"] * 1000000
-### Warn on high levels of contamination
-warn_rpm = idx_cnt.query(f"cross_cont_perM > {args.rpm_warn}")
-if not warn_rpm.empty:
-    logging.warning(f"\n{warn_rpm}")
 ### Save to file
 logging.info(f"Saving RG summary to {args.out_prefix}.cross_contam.tsv")
-idx_cnt.query('status == "known"')[
-    ["RG", "cross_cont_readsum", "cross_cont_perM"]
-].round(1).to_csv(
+idx_cnt.query('status == "known"').round(1).reset_index().to_csv(
     f"{args.out_prefix}.cross_contam.tsv",
     sep="\t",
     na_rep=".",
     index=False,
 )
+### Warn on high levels of contamination
+warn_rpm = idx_cnt.query(f'status == "known" & cross_cont_perM > {args.rpm_warn}')
+if not warn_rpm.empty:
+    logging.warning(f"\n{warn_rpm}")
 
 
 #############
@@ -365,23 +353,28 @@ if args.out_prefix:
         fig.update_traces(
             customdata=df["RG"],
             hovertemplate=(
-                "idx: %{x}<br>Read Counts: %{y}<br>RG: %{customdata}<extra></extra>"
+                "idx: %{x}<br>Est. hopped reads: %{y}<br>RG: %{customdata}<extra></extra>"
             ),
             secondary_y=False,
         )
         fig.update_traces(
             customdata=df["RG"],
             hovertemplate=(
-                "idx: %{x}<br>Read Counts per Million: %{y}<br>RG: %{customdata}<extra></extra>"
+                "idx: %{x}<br>Est. hopped reads per Million: %{y}<br>RG: %{customdata}<extra></extra>"
             ),
             secondary_y=True,
         )
-        fig.update_layout(title_text="Estimated Cross Contamination", title_x=0.5)
+        fig.update_layout(title_text="Est. Cross Contamination", title_x=0.5)
         # Set x-axes titles
         fig.update_xaxes(title_text="RG")
         # Set y-axes titles
         fig.update_yaxes(title_text="# Reads", secondary_y=False)
-        fig.update_yaxes(title_text="# Reads per Million", secondary_y=True)
+        fig.update_yaxes(
+            title_text="# Reads per Million",
+            secondary_y=True,
+            range=[None, np.log10(1e6)],
+            type="log",
+        )
         plotly.offline.plot(
             fig, filename=f"{args.out_prefix}.cross_contam.html", auto_open=False
         )

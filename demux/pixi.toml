@@ -1,5 +1,5 @@
 [workspace]
-authors = ["fgvieira <1151762+fgvieira@users.noreply.github.com>"]
+authors = ["fgvieira"]
 channels = ["conda-forge", "bioconda"]
 name = "seqcenter"
 platforms = ["linux-64"]

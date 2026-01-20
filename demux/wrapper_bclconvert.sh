@@ -6,7 +6,7 @@ set -euo pipefail
 HEADER='
 \n# Script Name: wrapper_bclconvert.sh
 \n# Description: Wrapper script to demux NovaSeq 6000 runs using bcl-convert.
-\n# Version: 1.3.2 (2025-11-19)
+\n# Version: 1.3.3 (2026-01-20)
 \n# Author: Filipe G. Vieira
 \n# Mail: fgvieira@sund.ku.dk
 '
@@ -85,16 +85,6 @@ mkdir -p $OUT_FOLDER
     echo `date`" [$RUN] Demultiplexing from $IN_FOLDER to $OUT_FOLDER with SampleSheet $SS (and extra: $EXTRA)"
     bcl-convert --bcl-input-directory $IN_FOLDER --output-directory $OUT_FOLDER --sample-sheet $SS --bcl-sampleproject-subdirectories true --force $EXTRA
 
-
-    ## Get pools from SS
-    POOLS=(`ss_pool $SS`)
-    ## Check cross-contamination
-    for POOL in ${POOLS[*]}
-    do
-	echo `date`" [$RUN][$POOL] Check cross-contamination"
-	python3 $BASEDIR/cross_contamination.py --index-counts $OUT_FOLDER/Reports/Index_Hopping_Counts.csv --lanes ${POOL#*:} --rpm-warn 100 --out-prefix $OUT_FOLDER/Reports/Index_Hopping_Counts/${POOL%:*}
-    done
-
     ## Get projects from SS
     PROJS=(`ss_proj $SS`)
     ## Check FASTQ files
@@ -141,6 +131,15 @@ mkdir -p $OUT_FOLDER
 
 	# Exit PROJ
 	cd ../
+    done
+
+    ## Get pools from SS
+    POOLS=(`ss_pool $SS`)
+    ## Check cross-contamination
+    for POOL in ${POOLS[*]}
+    do
+	echo `date`" [$RUN][$POOL] Check cross-contamination"
+	python3 $BASEDIR/cross_contamination.py --index-counts $OUT_FOLDER/Reports/Index_Hopping_Counts.csv --index-known $BASEDIR/eDNA_index_list_UDP097-UDP288_UDI001-UDI096_250807.txt --lanes ${POOL#*:} --rpm-warn 100 --out-prefix $OUT_FOLDER/Reports/Index_Hopping_Counts/${POOL%:*}
     done
 
     TIMESTAMP=`date "+%Y%m%d_%H%M%S"`
