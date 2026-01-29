@@ -6,7 +6,7 @@ set -euo pipefail
 HEADER='
 \n# Script Name: wrapper_bclconvert.sh
 \n# Description: Wrapper script to demux NovaSeq 6000/X runs using bcl-convert.
-\n# Version: 1.3.3 (2026-01-20)
+\n# Version: 1.3.4 (2026-01-29)
 \n# Author: Filipe G. Vieira
 \n# Mail: fgvieira@sund.ku.dk
 '
@@ -61,7 +61,7 @@ SS=$1; shift
 OUT_FOLDER=$1; shift
 EXTRA=$@
 
-RUN=20`basename $IN_FOLDER`
+RUN=`basename $IN_FOLDER`
 if [[ `realpath $OUT_FOLDER` == "/maps/datasets/caeg_fastq" ]]; then
     OUT_FOLDER=$OUT_FOLDER/${RUN:0:4}/$RUN
 else
