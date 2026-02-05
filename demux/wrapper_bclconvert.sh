@@ -43,6 +43,10 @@ function check_pe() {
     fi
 }
 
+function ss_validate() {
+    python3 -c "from samshee.samplesheetv2 import read_samplesheetv2; ss = read_samplesheetv2('$1')"
+}
+
 function ss_pool() {
     python3 -c "from samshee.samplesheetv2 import read_samplesheetv2; ss = read_samplesheetv2('$1'); [print(val, tag.removeprefix('PoolLane')) for tag, val in ss.header.items() if tag.startswith('PoolLane')]" | datamash -t " " --output-delimiter=":" groupby 1 collapse 2
 }
@@ -50,15 +54,15 @@ function ss_pool() {
 function ss_proj() {
     python3 -c "from samshee.samplesheetv2 import read_samplesheetv2; ss = read_samplesheetv2('$1'); [print(data['Sample_Project']) for data in ss.applications['BCLConvert']['data']]" | sort -u
 }
-export -f check_se check_pe ss_pool ss_proj
+export -f check_se check_pe ss_validate ss_pool ss_proj
 
 
 ## Setup
 THREADS=5
 
-IN_FOLDER=$1; shift
-SS=$1; shift
-OUT_FOLDER=$1; shift
+IN_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
+SS=`realpath --canonicalize-existing --no-symlinks $1`; shift
+OUT_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
 EXTRA=$@
 
 RUN=`basename $IN_FOLDER`
@@ -81,8 +85,11 @@ mkdir -p $OUT_FOLDER
     # Log script info
     echo -e $HEADER
 
+    ## Validate SampleSheet
+    ss_validate $SS
+
     ## Demultiplex
-    echo `date`" [$RUN] Demultiplexing from $IN_FOLDER to $OUT_FOLDER with SampleSheet $SS (and extra: $EXTRA)"
+    echo `date`" [$RUN] Demultiplexing from '$IN_FOLDER' to '$OUT_FOLDER' with SampleSheet '$SS' (and extra: '$EXTRA')"
     bcl-convert --bcl-input-directory $IN_FOLDER --output-directory $OUT_FOLDER --sample-sheet $SS --bcl-sampleproject-subdirectories true --force $EXTRA
 
     ## Get projects from SS
