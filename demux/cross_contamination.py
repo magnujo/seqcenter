@@ -3,8 +3,8 @@
 header = """
 Filename: cross_contamination.py
 Author: Filipe G. Vieira
-Date: 2026-01-20
-Version: 1.0.3"""
+Date: 2026-02-09
+Version: 1.0.4"""
 
 import argparse
 import logging
@@ -107,7 +107,7 @@ logging.info(header)
 #################################
 logging.info(f"Reading Index Hopping counts file {args.index_counts}")
 idx_cnt = (
-    pd.read_csv(args.index_counts)
+    pd.read_csv(args.index_counts, low_memory=False)
     .drop(["Sample_Project", "% of Hopped Reads", "% of All Reads"], axis=1)
     .rename(
         columns={
