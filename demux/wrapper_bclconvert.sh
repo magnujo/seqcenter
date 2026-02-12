@@ -13,7 +13,7 @@ HEADER='
 BASEDIR=`dirname $0`
 
 
-module load python/3.12.8
+module load python/3.12.8 miller/6.16.0
 # Test python imports
 python3 -c 'import samshee'
 python3 -c 'import argparse'
