@@ -149,6 +149,10 @@ mkdir -p $OUT_FOLDER
 	python3 $BASEDIR/cross_contamination.py --index-counts $OUT_FOLDER/Reports/Index_Hopping_Counts.csv --index-known $BASEDIR/eDNA_index_list_UDP097-UDP288_UDI001-UDI096_250807.txt --lanes ${POOL#*:} --rpm-warn 100 --out-prefix $OUT_FOLDER/Reports/Index_Hopping_Counts/${POOL%:*}
     done
 
+    ## Adapters with >5e6 undetermined reads
+    echo `date`" [$RUN] Adapters with >5e6 undetermined reads"
+    mlr --csv filter '$index != "GGGGGGGGGG" && $index2 != "GGGGGGGGGG" && $index != "NNNNNNNNNN" && $index2 != "NNNNNNNNNN" && ${# Reads} > 5e6' $OUT_FOLDER/Reports/Top_Unknown_Barcodes.csv
+
     TIMESTAMP=`date "+%Y%m%d_%H%M%S"`
     touch seqcenter.$TIMESTAMP.done
     cd ../
