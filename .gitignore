@@ -209,3 +209,5 @@ __marimo__/
 # pixi environments
 .pixi
 *.egg-info
+.vscode/launch.json
+.vscode/settings.json

@@ -1,0 +1,6 @@
+# Requirements for smdb_upload.py
+
+# List your package dependencies here, for example:
+pandas
+sqlalchemy
+psycopg2

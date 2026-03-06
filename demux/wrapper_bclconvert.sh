@@ -24,6 +24,8 @@ python3 -c 'import pathlib'
 python3 -c 'import collections'
 python3 -c 'import plotly'
 python3 -c 'import matplotlib'
+python3 -c 'import psycopg2'
+python3 -c 'import sqlalchemy'
 
 
 ## Functions
@@ -63,13 +65,16 @@ THREADS=5
 IN_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
 SS=`realpath --canonicalize-existing --no-symlinks $1`; shift
 OUT_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
+DB_PASSWORD=$1; shift
 EXTRA=$@
 
 RUN=`basename $IN_FOLDER`
 if [[ `realpath $OUT_FOLDER` == "/maps/datasets/caeg_fastq" ]]; then
     OUT_FOLDER=$OUT_FOLDER/${RUN:0:4}/$RUN
+    CAEG_DATA=true
 else
     OUT_FOLDER=$OUT_FOLDER/$RUN
+    CAEG_DATA=false
 fi
 
 # Check if output folder exists
@@ -156,6 +161,37 @@ mkdir -p $OUT_FOLDER
     TIMESTAMP=`date "+%Y%m%d_%H%M%S"`
     touch seqcenter.$TIMESTAMP.done
     cd ../
+	
+	if [ $CAEG_DATA = true ]; then
+		echo `date`" [$RUN] uploading metadata to SMDB"
+		SMDB_UPLOAD_SCRIPT="$BASEDIR/smdb-upload/smdb_upload.py"
+
+		DEMUX_STATS_CSV="$OUT_FOLDER/Reports/Demultiplex_Stats.csv"
+		RUNINFO_XML="$OUT_FOLDER/Reports/RunInfo.xml"
+		UPLOAD_RECEIPTS_TO="julie.bitz-thorsen@sund.ku.dk"
+		DB_NAME="smdb"
+		DB_SCHEMA="uploaded_data"
+		DB_USER="upload_user"
+		DB_HOST="dandypdb01fl"
+		DB_PORT="5432"
+		DB_TABLE="flowcell"
+
+		python3 "$SMDB_UPLOAD_SCRIPT" \
+				--path_to_demultiplex_stats "$DEMUX_STATS_CSV" \
+				--path_to_run_info "$RUNINFO_XML" \
+				--path_to_sample_sheet "$SS" \
+				--db_name "$DB_NAME" \
+				--schema_name "$DB_SCHEMA" \
+				--db_user "$DB_USER" \
+				--db_password "$DB_PASSWORD" \
+				--db_host "$DB_HOST" \
+				--db_port "$DB_PORT" \
+				--table_name "$DB_TABLE" \
+				--send_upload_receipts_to "$UPLOAD_RECEIPTS_TO"
+	fi
+
 } 2>&1 | tee $OUT_FOLDER/$RUN.demux.log
+
+
 
 exit 0
