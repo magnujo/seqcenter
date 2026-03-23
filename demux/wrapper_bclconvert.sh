@@ -65,8 +65,11 @@ THREADS=5
 IN_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
 SS=`realpath --canonicalize-existing --no-symlinks $1`; shift
 OUT_FOLDER=`realpath --canonicalize-existing --no-symlinks $1`; shift
-DB_PASSWORD=$1; shift
 EXTRA=$@
+
+if [ -z "${DB_PASSWORD:-}" ]; then
+    echo "WARNING: DB_PASSWORD not set and upload to SMDB will be skipped" >&2
+fi
 
 RUN=`basename $IN_FOLDER`
 if [[ `realpath $OUT_FOLDER` == "/maps/datasets/caeg_fastq" ]]; then
@@ -163,6 +166,7 @@ mkdir -p $OUT_FOLDER
     cd ../
 	
 	if [ $CAEG_DATA = true ]; then
+		: "${DB_PASSWORD:?DB_PASSWORD is not set}"
 		echo `date`" [$RUN] uploading metadata to SMDB"
 		SMDB_UPLOAD_SCRIPT="$BASEDIR/smdb-upload/smdb_upload.py"
 
