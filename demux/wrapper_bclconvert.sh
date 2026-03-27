@@ -6,7 +6,7 @@ set -euo pipefail
 HEADER='
 \n# Script Name: wrapper_bclconvert.sh
 \n# Description: Wrapper script to demux Illumina runs using bcl-convert.
-\n# Version: 1.3.5 (2026-02-12)
+\n# Version: 1.4.1 (2026-03-27)
 \n# Author: Filipe G. Vieira
 \n# Mail: fgvieira@sund.ku.dk
 '
@@ -72,6 +72,11 @@ if [ -z "${DB_PASSWORD:-}" ]; then
 fi
 
 RUN=`basename $IN_FOLDER`
+# Add 20 year prefix, if not present
+if [[ ${RUN:0:2} != "20" ]]; then
+    RUN="20"$RUN
+fi
+# Define output folder
 if [[ `realpath $OUT_FOLDER` == "/maps/datasets/caeg_fastq" ]]; then
     OUT_FOLDER=$OUT_FOLDER/${RUN:0:4}/$RUN
     CAEG_DATA=true
