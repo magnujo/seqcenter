@@ -4,7 +4,7 @@ header = """
 Filename: cross_contamination.py
 Author: Filipe G. Vieira
 Date: 2026-02-09
-Version: 1.0.4"""
+Version: 1.0.5"""
 
 import argparse
 import logging
@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from collections import defaultdict
-
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
@@ -35,11 +34,11 @@ parser.add_argument(
     help="Path to file with index names.",
 )
 parser.add_argument(
-    "--index-8bp-suffix",
+    "--adapter-seqs",
     action="store",
     nargs=2,
-    default=["AT", "GT"],
-    help="Suffix for 8bp indexes (P7 and P5).",
+    default=["ATCTCGTATGCCGTCTTCTGCTTG", "GTGTAGATCTCGGTGGTCGCCGTATCATT"],
+    help="Adapter sequences [P7 and P5].",
 )
 parser.add_argument(
     "--miseq",
@@ -51,6 +50,7 @@ parser.add_argument(
     "--lanes",
     action="store",
     default=None,
+    type=str,
     help="Comma-sepparated list of lanes to restrict analyses",
 )
 parser.add_argument(
@@ -141,28 +141,34 @@ idx_cnt = (
 if args.index_known:
     logging.info(f"Reading indexes from {args.index_known}")
     idx_names = pd.read_table(args.index_known)
+    assert (idx_cnt["p7seq"].str.len() == idx_cnt["p5seq"].str.len()).all(), (
+        "P7 and P5 adapters have different lenghts!"
+    )
     # Revcomp P5 index
     if args.miseq:
         idx_8bp = idx_names["P5_INDEX_Seq"].str.len().eq(8)
         idx_names.loc[idx_8bp, "P5_INDEX_Seq"] = idx_names.loc[
             idx_8bp, "P5_INDEX_Seq"
         ].map(
-            lambda x: x.replace("A", "t")
-            .replace("C", "g")
-            .replace("G", "c")
-            .replace("T", "a")
-            .upper()[::-1]
+            lambda x: (
+                x.replace("A", "t")
+                .replace("C", "g")
+                .replace("G", "c")
+                .replace("T", "a")
+                .upper()[::-1]
+            )
         )
     # Add index suffix
-    if isinstance(args.index_8bp_suffix, list) and len(args.index_8bp_suffix) == 2:
-        idx_8bp = idx_names["P7_INDEX_Seq"].str.len().eq(8)
-        idx_names.loc[idx_8bp, "P7_INDEX_Seq"] = (
-            idx_names.loc[idx_8bp, "P7_INDEX_Seq"] + args.index_8bp_suffix[0]
-        )
-        idx_8bp = idx_names["P5_INDEX_Seq"].str.len().eq(8)
-        idx_names.loc[idx_8bp, "P5_INDEX_Seq"] = (
-            idx_names.loc[idx_8bp, "P5_INDEX_Seq"] + args.index_8bp_suffix[1]
-        )
+    idx_len_max = idx_cnt["p7seq"].str.len().max()
+    idx_names["idx_len_diff"] = idx_len_max - idx_names["P7_INDEX_Seq"].str.len()
+    idx_names["idx_len_diff"] = idx_names["idx_len_diff"].clip(0)
+
+    idx_names["P7_INDEX_Seq"] = idx_names.apply(
+        lambda row: row.P7_INDEX_Seq + args.adapter_seqs[0][: row.idx_len_diff], axis=1
+    )
+    idx_names["P5_INDEX_Seq"] = idx_names.apply(
+        lambda row: row.P5_INDEX_Seq + args.adapter_seqs[1][: row.idx_len_diff], axis=1
+    )
 else:
     idx_names = idx_cnt[["RG", "p7seq", "RG", "p5seq"]].dropna()
     idx_names.columns = ["P7_INDEX_ID", "P7_INDEX_Seq", "P5_INDEX_ID", "P5_INDEX_Seq"]
@@ -192,9 +198,9 @@ total_seqs = sum(idx_cnt["seqs"])
 logging.info(f"Saving counts table to {args.out_prefix}.counts.tsv")
 Path(args.out_prefix).parent.mkdir(parents=True, exist_ok=True)
 idx_cnt.to_csv(f"{args.out_prefix}.counts.tsv", sep="\t", na_rep=".", index=False)
-assert (
-    ~idx_cnt["p7id"].isna().all() or ~idx_cnt["p5id"].isna().all()
-), "No known index can be found."
+assert ~idx_cnt["p7id"].isna().all() or ~idx_cnt["p5id"].isna().all(), (
+    "No known index can be found."
+)
 
 ### Pivot table ###
 idx_pivot = idx_cnt.pivot(index="p7id", columns="p5id", values="seqs")
