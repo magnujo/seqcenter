@@ -79,7 +79,7 @@ def upload_demultiplex_stats(path_to_demultiplex_stats, path_to_run_info, path_t
     
     # TODO: Uncomment
     num_lanes = len(dmux_stats['Lane'].unique())
-    assert num_lanes == 8, 'Expected 8 lanes in the demultiplex stats file. got ' + str(num_lanes)
+    assert 0 < num_lanes < 9, f"Expected 1-8 lanes in the demultiplex stats file, but got {num_lanes}"
     
     # Add sequencing pool based on lane
     pool_lanes = [sample_sheet.loc['PoolLane1', 'Value'],
