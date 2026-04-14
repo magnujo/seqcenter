@@ -77,20 +77,13 @@ def upload_demultiplex_stats(path_to_demultiplex_stats, path_to_run_info, path_t
     dmux_stats['flowcell'] = flowcell_id
     dmux_stats.loc[dmux_stats["SampleID"] == "Undetermined", "Index"] = "unknown"
     
-    # TODO: Uncomment
     num_lanes = len(dmux_stats['Lane'].unique())
     assert 0 < num_lanes < 9, f"Expected 1-8 lanes in the demultiplex stats file, but got {num_lanes}"
     
-    # Add sequencing pool based on lane
-    pool_lanes = [sample_sheet.loc['PoolLane1', 'Value'],
-                  sample_sheet.loc['PoolLane2', 'Value'],
-                  sample_sheet.loc['PoolLane3', 'Value'],
-                  sample_sheet.loc['PoolLane4', 'Value'],
-                  sample_sheet.loc['PoolLane5', 'Value'],
-                  sample_sheet.loc['PoolLane6', 'Value'],
-                  sample_sheet.loc['PoolLane7', 'Value'],
-                  sample_sheet.loc['PoolLane8', 'Value']
-                  ]
+    pool_lanes = []
+    
+    for i in range(num_lanes):
+        pool_lanes.append(sample_sheet.loc[f'PoolLane{i + 1}', 'Value'])
     
     dmux_stats['sequencing_tube_tag'] = dmux_stats['Lane'].apply(lambda x: pool_lanes[x - 1])
     
