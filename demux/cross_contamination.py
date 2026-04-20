@@ -3,8 +3,8 @@
 header = """
 Filename: cross_contamination.py
 Author: Filipe G. Vieira
-Date: 2026-02-09
-Version: 1.0.5"""
+Date: 2026-04-20
+Version: 1.0.6"""
 
 import argparse
 import logging
@@ -41,10 +41,10 @@ parser.add_argument(
     help="Adapter sequences [P7 and P5].",
 )
 parser.add_argument(
-    "--miseq",
+    "--p5-revcomp",
     action="store_true",
     default=False,
-    help="MiSeq run (P5 sequences will be revcomp)?",
+    help="Revcomp P5 sequences?",
 )
 parser.add_argument(
     "--lanes",
@@ -133,6 +133,10 @@ idx_cnt = (
     .sum()
     .reset_index()
 )
+logging.debug(f"\n{idx_cnt}")
+idx_len_max = idx_cnt["p7seq"].str.len().max()
+assert not np.isnan(idx_len_max), f"Idx max length is {idx_len_max}"
+assert idx_cnt.shape[0] > 0, "Index count matrix is either empty or does not contain specified lanes."
 
 
 #########################
@@ -145,10 +149,9 @@ if args.index_known:
         "P7 and P5 adapters have different lenghts!"
     )
     # Revcomp P5 index
-    if args.miseq:
-        idx_8bp = idx_names["P5_INDEX_Seq"].str.len().eq(8)
-        idx_names.loc[idx_8bp, "P5_INDEX_Seq"] = idx_names.loc[
-            idx_8bp, "P5_INDEX_Seq"
+    if args.p5_revcomp:
+        idx_names["P5_INDEX_Seq"] = idx_names[
+            "P5_INDEX_Seq"
         ].map(
             lambda x: (
                 x.replace("A", "t")
@@ -159,7 +162,6 @@ if args.index_known:
             )
         )
     # Add index suffix
-    idx_len_max = idx_cnt["p7seq"].str.len().max()
     idx_names["idx_len_diff"] = idx_len_max - idx_names["P7_INDEX_Seq"].str.len()
     idx_names["idx_len_diff"] = idx_names["idx_len_diff"].clip(0)
 
@@ -172,19 +174,32 @@ if args.index_known:
 else:
     idx_names = idx_cnt[["RG", "p7seq", "RG", "p5seq"]].dropna()
     idx_names.columns = ["P7_INDEX_ID", "P7_INDEX_Seq", "P5_INDEX_ID", "P5_INDEX_Seq"]
-logging.debug(idx_names)
+logging.debug(f"\n{idx_names}")
 
 
 ########################
 ### Assign Index IDs ###
 ########################
 logging.info("Assign index IDs")
+total_seqs = sum(idx_cnt["seqs"])
 idx_cnt["p7id"] = idx_cnt["p7seq"].map(
     idx_names.set_index("P7_INDEX_Seq")["P7_INDEX_ID"].to_dict()
 )
 idx_cnt["p5id"] = idx_cnt["p5seq"].map(
     idx_names.set_index("P5_INDEX_Seq")["P5_INDEX_ID"].to_dict()
 )
+# Use RG
+if idx_cnt["p7id"].isna().all() and idx_cnt["p5id"].isna().all():
+    logging.warning("No known index can be found. Using RG as indexes IDs.")
+    # Use idx_names from RG
+    idx_names = idx_cnt[["RG", "p7seq", "RG", "p5seq"]].dropna()
+    idx_names.columns = ["P7_INDEX_ID", "P7_INDEX_Seq", "P5_INDEX_ID", "P5_INDEX_Seq"]
+    idx_cnt["p7id"] = idx_cnt["p7seq"].map(
+        idx_names.set_index("P7_INDEX_Seq")["P7_INDEX_ID"].to_dict()
+    )
+    idx_cnt["p5id"] = idx_cnt["p5seq"].map(
+        idx_names.set_index("P5_INDEX_Seq")["P5_INDEX_ID"].to_dict()
+    )
 idx_cnt.loc[idx_cnt.p7id != idx_cnt.p5id, "RG"] = "unexpected"
 idx_cnt.loc[idx_cnt.p7id.isna() | idx_cnt.p5id.isna(), "RG"] = "unknown"
 
@@ -192,15 +207,11 @@ idx_cnt.loc[idx_cnt.p7id.isna() | idx_cnt.p5id.isna(), "RG"] = "unknown"
 idx_cnt = idx_cnt[["seqs", "p7seq", "p7id", "p5seq", "p5id", "RG"]].sort_values(
     ["seqs"], ascending=False
 )
-total_seqs = sum(idx_cnt["seqs"])
 
 ### Save to file
 logging.info(f"Saving counts table to {args.out_prefix}.counts.tsv")
 Path(args.out_prefix).parent.mkdir(parents=True, exist_ok=True)
 idx_cnt.to_csv(f"{args.out_prefix}.counts.tsv", sep="\t", na_rep=".", index=False)
-assert ~idx_cnt["p7id"].isna().all() or ~idx_cnt["p5id"].isna().all(), (
-    "No known index can be found."
-)
 
 ### Pivot table ###
 idx_pivot = idx_cnt.pivot(index="p7id", columns="p5id", values="seqs")

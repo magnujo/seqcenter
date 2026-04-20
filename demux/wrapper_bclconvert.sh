@@ -172,7 +172,7 @@ mkdir -p $OUT_FOLDER
 	
 	if [ $CAEG_DATA = true ]; then
 		: "${DB_PASSWORD:?DB_PASSWORD is not set}"
-		echo `date`" [$RUN] uploading metadata to SMDB"
+		echo `date`" [$RUN] Uploading metadata to SMDB"
 		SMDB_UPLOAD_SCRIPT="$BASEDIR/smdb-upload/smdb_upload.py"
 
 		DEMUX_STATS_CSV="$OUT_FOLDER/Reports/Demultiplex_Stats.csv"
