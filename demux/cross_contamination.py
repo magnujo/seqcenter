@@ -3,8 +3,8 @@
 header = """
 Filename: cross_contamination.py
 Author: Filipe G. Vieira
-Date: 2026-04-20
-Version: 1.0.6"""
+Date: 2026-04-22
+Version: 1.0.7"""
 
 import argparse
 import logging
@@ -105,7 +105,7 @@ logging.info(header)
 #################################
 ### Index Hopping Counts file ###
 #################################
-logging.info(f"Reading Index Hopping counts file {args.index_counts}")
+logging.info(f"Reading Index Hopping Counts file {args.index_counts}")
 idx_cnt = (
     pd.read_csv(args.index_counts, low_memory=False)
     .drop(["Sample_Project", "% of Hopped Reads", "% of All Reads"], axis=1)
@@ -119,6 +119,9 @@ idx_cnt = (
         }
     )
 )
+if idx.shape[0] == 0:
+    logging.warning(f"Index Hopping Counts file {args.index_counts} is empty!")
+    exit(0)
 
 # Select lanes
 if args.lanes:
@@ -134,9 +137,10 @@ idx_cnt = (
     .reset_index()
 )
 logging.debug(f"\n{idx_cnt}")
+assert idx_cnt.shape[0] > 0, "Index count matrix does not contain specified lanes."
+
 idx_len_max = idx_cnt["p7seq"].str.len().max()
 assert not np.isnan(idx_len_max), f"Idx max length is {idx_len_max}"
-assert idx_cnt.shape[0] > 0, "Index count matrix is either empty or does not contain specified lanes."
 
 
 #########################
